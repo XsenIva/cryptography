@@ -1,99 +1,189 @@
 package main
 
 import (
-	"errors"
 	"fmt"
 	"math/big"
 	"math/rand"
 	"os"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
 )
 
 var file, _ = os.Create("buf.txt")
+var file_2, _ = os.Create("group.txt")
 
-// параметры в качестве входа, файлы сохранить все необходимые данные кривых
-// откуда знать, что все перебрали
-// показывать все шаги и проверять все шаги
-// нужно хранить все перебранные варианты простых чисел елки-палки это же елементарно до 20
 func main() {
 	defer file.Close()
+	defer file_2.Close()
 	var n, m int
 	fmt.Scan(&n)
+
 	fmt.Scan(&m)
 	file.WriteString("\n" + "n = " + strconv.Itoa(n))
 	file.WriteString("\n" + "m = " + strconv.Itoa(m))
-
+	var list_p []*big.Int
 	one_big := big.NewInt(1)
-	list_prime_num := gen_prim_num(n, one_big)
+	list_prime_num, _ := parseBigIntArray(gen_prim_num(n, one_big))
+
 	if len(list_prime_num) == 0 {
-		file.WriteString("\n" + "Нет числа заданной длинны")
 		fmt.Println("Нет числа заданной длинны")
 		return
 	}
 
+	if n < 4 {
+		file.WriteString("\n" + "Маленькое n")
+		return
+	}
 	var i_num, a, b, n_big, r, order *big.Int
 	for i := 0; ; i++ {
 		defer func() {
 			if err := recover(); err != nil {
+				fmt.Println(err)
 				file.WriteString("\n" + "На этапе проверки условий N = 1 + T + p, не нашлось подходящих простых чисел")
 				return
 			}
 		}()
-		i_num = list_prime_num[i]
-		fmt.Println(list_prime_num[0])
-		a, b, _ = decomposeToSquares(i_num)
 
-		n_big, r, order = test_2_conditions(a, b, one_big, i_num)
-		if n_big != nil && r != nil && order != nil {
+		var list_prime_num_array []int
+		var f int
+		for {
+			f = rand.Intn(len(list_prime_num))
+			found := slices.Contains(list_prime_num_array, f)
+			if !found {
+				list_prime_num_array = append(list_prime_num_array, f)
+			} else {
+				break
+			}
+		}
+		// надо сделать округление вверх
+		file.WriteString("\nprime p = " + list_prime_num[f].String())
+		list_p = append(list_p, list_prime_num[f])
+		fmt.Println(list_p)
+		i_num = list_prime_num[f]
+
+		a, b, _ = decomposeToSquares(i_num)
+		if a == nil || b == nil {
+			continue
+		}
+		res1, res2, res3, flag := test_2_conditions(a, b, one_big, i_num)
+		if flag {
+			n_big, r, order = res1, res2, res3
+			fmt.Println("последнее p = ", i_num)
 			break
+		} else {
+			file.WriteString("\n" + "На этапе проверки условий N = 1 + T + p, не нашлось подходящих чисел")
 		}
 	}
 
 	file.WriteString("\n" + "Проверка условий N = 1 + T + p")
 	file.WriteString("\n" + "N, r, k = " + n_big.String() + ", " + r.String() + ", " + order.String())
-	var prov string
 
 	if check_m(r, i_num, one_big, m) {
-		prov = "проходит"
+		file.WriteString("\n" + "Результат: " + "проходит")
 	} else {
-		prov = "не проходит"
+		file.WriteString("\n" + "Результат: " + "не проходит")
+		return
 	}
-	file.WriteString("\n" + "Результат: " + prov)
 
-	a_cof := foo(n_big, order)
-	x, y := find_points(a_cof, i_num)
-	rx, ry := scalarMultiply(x, y, n_big, a_cof, i_num)
-	fmt.Printf("Результат умножения точки на скаляр: (%s, %s)\n", rx.String(), ry.String())
-	rx, ry = scalarMultiply(x, y, order, a_cof, i_num)
-	fmt.Printf("Результат умножения точки на скаляр: (%s, %s)\n", rx.String(), ry.String())
+	a_cof_list := gen_a_cof(n_big, order)
+
+	var x, y, a_cof *big.Int
+	for _, el := range a_cof_list {
+		x, y = find_points(el, i_num)
+		if x != nil && y != nil {
+			a_cof = el
+			break
+		}
+	}
+	file.WriteString("\nКоэффициент A: " + a_cof.String())
+	file.WriteString("\n" + "Сгенерированы следующие точки \nx, y = " + x.String() + ", " + y.String())
+	rx, ry, _ := scalarMultiply(x, y, n_big, a_cof, i_num)
+	fmt.Printf("Результат проверки бесконечности: (%s, %s)\n", rx.String(), ry.String())
+
+	file.WriteString("\n" + "N, r, k = " + n_big.String() + ", " + r.String() + ", " + order.String())
+
+	aboba := new(big.Int).Div(n_big, r)
+	rx, ry, _ = scalarMultiply(x, y, aboba, a_cof, i_num)
+
+	xy_string := "(" + rx.String() + ", " + ry.String() + ")"
+	file.WriteString("\nТочка Q = " + xy_string)
+
+	file.WriteString("\nКривая (P, A ,Q, r) = " + i_num.String() + ", " + a_cof.String() + ", " + xy_string + ", " + r.String())
+
+	var arr_points_x string
+	var arr_points_y string
+	arr_points_x = arr_points_x + rx.String() + ","
+	arr_points_y = arr_points_y + ry.String() + ","
+
+	i := big.NewInt(2)
+	for {
+		if i.Cmp(new(big.Int).Add(r, big.NewInt(1))) == 1 {
+			break
+		}
+		q_qx, q_qy, _ := scalarMultiply(rx, ry, i, a_cof, i_num)
+		i = new(big.Int).Add(i, big.NewInt(1))
+		arr_points_x = arr_points_x + q_qx.String() + ","
+		arr_points_y = arr_points_y + q_qy.String() + ","
+	}
+
+	file_2.WriteString("\nЦиклическая группа " + "\n" + arr_points_x + "\n" + arr_points_y)
+	file.WriteString("\nЦиклическая группа " + "\n" + arr_points_x + "\n" + arr_points_y)
 }
 
-func gen_prim_num(n int, one_big *big.Int) []*big.Int {
-	k := 15
+func checkPointOnCurve(x, y, a, p *big.Int) bool {
+	left := new(big.Int).Mul(y, y)
+	left.Mod(left, p)
+
+	right := new(big.Int).Mul(x, x)
+	right.Mul(right, x)
+	right.Add(right, new(big.Int).Mul(a, x))
+	right.Mod(right, p)
+
+	return left.Cmp(right) == 0
+}
+
+func parseBigIntArray(input string) ([]*big.Int, error) {
+	parts := strings.Split(input, ",")
+	result := make([]*big.Int, 0, len(parts))
+
+	for _, part := range parts {
+
+		part = strings.TrimSpace(part)
+
+		num := new(big.Int)
+		_, ok := num.SetString(part, 10)
+		if !ok {
+			return nil, fmt.Errorf("не удалось преобразовать %s в big.Int", part)
+		}
+		result = append(result, num)
+	}
+
+	return result, nil
+}
+
+func gen_prim_num(n int, one_big *big.Int) string {
+	k := 10
 	i_num := gen_n_bit(n, "0")
 	for_big := big.NewInt(4)
 	sum := new(big.Int)
-	var numPrime []*big.Int
-
+	var numP string
+	fmt.Println(i_num)
 	for {
+		if !given_length(n, i_num) {
+			break
+		}
 		sum.Add(i_num, one_big)
 		prime := isPrime(i_num, k)
-
 		if prime && (new(big.Int).Mod(i_num, for_big).Cmp(one_big) == 0) {
-			if !given_length(n, i_num) {
-				break
-			}
-			numPrime = append(numPrime, new(big.Int).Set(i_num))
+			numP = numP + ", " + i_num.String()
 		}
 		i_num.Set(sum)
 	}
-
-	return numPrime
+	return numP[2:]
 }
 
-// Функция для чтения последней строки из файла
 func find_points(a_cof, p *big.Int) (*big.Int, *big.Int) {
 	x := big.NewInt(1)
 	y := big.NewInt(1)
@@ -111,85 +201,45 @@ func find_points(a_cof, p *big.Int) (*big.Int, *big.Int) {
 	return nil, nil
 }
 
-// Символ Якоби
-func jacobi(a, n *big.Int) int {
-	if n.Cmp(big.NewInt(0)) <= 0 {
-		fmt.Println(n)
-		return 0
-	}
-	j := 1
-	aMod := new(big.Int).Mod(a, n)
-	for aMod.Cmp(big.NewInt(0)) != 0 {
-		for aMod.Bit(0) == 0 {
-			aMod.Rsh(aMod, 1)
-			nMod8 := new(big.Int).Mod(n, big.NewInt(8)).Int64()
-			if nMod8 == 3 || nMod8 == 5 {
-				j = -j
-			}
+func findQuadraticResiduesAndNonResidues(p, order *big.Int) ([]*big.Int, []*big.Int) {
+	residueMap := make(map[string]bool)
+	var residues []*big.Int
+	var nonResidues []*big.Int
+
+	one := big.NewInt(1)
+
+	for i := new(big.Int).Set(one); i.Cmp(p) == -1; i.Add(i, one) {
+		square := new(big.Int).Exp(i, big.NewInt(2), p)
+		squareStr := square.String()
+
+		if !residueMap[squareStr] {
+			residues = append(residues, new(big.Int).Set(square))
+			residueMap[squareStr] = true
 		}
-		fmt.Println("a, n", n, aMod)
-		aMod, n = n, aMod
-		fmt.Println("a, n", n, aMod)
-		if aMod.Mod(aMod, big.NewInt(4)).Cmp(big.NewInt(3)) == 0 &&
-			n.Mod(n, big.NewInt(4)).Cmp(big.NewInt(3)) == 0 {
-			j = -j
+	}
+
+	for i := new(big.Int).Set(one); i.Cmp(p) == -1; i.Add(i, one) {
+		if !residueMap[i.String()] {
+			nonResidues = append(nonResidues, new(big.Int).Set(i))
 		}
-		aMod.Mod(aMod, n)
 	}
-	if n.Cmp(big.NewInt(1)) == 0 {
-		return j
-	}
-	return 0
+
+	return residues, nonResidues
 }
 
-// Вычет ли
-func isQuadraticResidueJacobi(a, p *big.Int) bool {
-	return jacobi(a, p) == 1
-}
-
-// Невычет ли
-func isQuadraticNonResidue(a, p *big.Int) bool {
-	return jacobi(a, p) == -1
-}
-
-// Функция для поиска квадратичного вычета по модулю p (составного числа)
-func findQuadraticResidueComposite(p, order *big.Int) (*big.Int, error) {
-	a := big.NewInt(2)
+func gen_a_cof(n_big, order *big.Int) []*big.Int {
+	var ans []*big.Int
 	if order.Cmp(big.NewInt(2)) == 0 {
-		for a.Cmp(p) < 0 {
-			if isQuadraticNonResidue(a, p) {
-				file.WriteString("\n" + "A невычет для N = 2r " + "\n" + "A = " + a.String())
-				return a, nil
-			}
-			a.Add(a, big.NewInt(1))
-		}
-		return a, nil
-	} else {
-		if order.Cmp(big.NewInt(4)) == 0 {
-			for a.Cmp(p) < 0 {
-				if isQuadraticResidueJacobi(a, p) {
-					file.WriteString("\n" + "A вычет для N = 4r " + "\n" + "A = " + a.String())
-					return a, nil
-				}
-				a.Add(a, big.NewInt(1))
-			}
-		} else {
-			return nil, errors.New("Нет квадратичного вычета и невычета")
-		}
+		_, ans = findQuadraticResiduesAndNonResidues(n_big, order)
 	}
-	return nil, nil
-
-}
-
-// Генерация коэффициента A вычета для 4r и невычета для 2r
-func foo(n_big, order *big.Int) *big.Int {
-	a, err := findQuadraticResidueComposite(n_big, order)
-	if err != nil {
+	if order.Cmp(big.NewInt(4)) == 0 {
+		ans, _ = findQuadraticResiduesAndNonResidues(n_big, order)
+	}
+	if len(ans) == 0 {
 		file.WriteString("\n" + "Нет квадратичного вычета и невычета")
 		return nil
 	} else {
-		fmt.Printf("A: %d\n", a)
-		return a
+		return ans
 	}
 }
 
@@ -211,7 +261,7 @@ func check_m(r, i_num, one_big *big.Int, m int) bool {
 	return false
 }
 
-func test_2_conditions(a, b, one_big, p *big.Int) (*big.Int, *big.Int, *big.Int) {
+func test_2_conditions(a, b, one_big, p *big.Int) (*big.Int, *big.Int, *big.Int, bool) {
 	two_big, _ := new(big.Int).SetString("2", 10)
 	n_1 := new(big.Int).Mul(a, two_big)
 	n_2 := new(big.Int).Mul(b, two_big)
@@ -219,24 +269,24 @@ func test_2_conditions(a, b, one_big, p *big.Int) (*big.Int, *big.Int, *big.Int)
 	n_sum := new(big.Int)
 	n_sub := new(big.Int)
 	p_plus_one := new(big.Int).Add(p, one_big)
-	// fmt.Println(p_plus_one)
+
 	k := 10
 
 	for _, t_el := range t_arr {
-		n_sum.Add(p_plus_one, &t_el)
 		n_sub.Sub(p_plus_one, &t_el)
 		r, mult, flag := if_true(n_sub, two_big, k)
 		if flag {
-			return n_sub, r, mult
+			return n_sub, r, mult, true
 		}
+		n_sum.Add(p_plus_one, &t_el)
 		r, mult, flag = if_true(n_sum, two_big, k)
 		if flag {
-			return n_sub, r, mult
+			return n_sum, r, mult, true
 		} else {
-			return nil, nil, nil
+			return nil, nil, nil, false
 		}
 	}
-	return nil, nil, nil
+	return nil, nil, nil, false
 }
 
 func if_true(n_some, r *big.Int, k int) (*big.Int, *big.Int, bool) {
@@ -253,12 +303,10 @@ func if_true(n_some, r *big.Int, k int) (*big.Int, *big.Int, bool) {
 }
 
 func decomposeToSquares(p *big.Int) (a, b *big.Int, found bool) {
-	fmt.Println(p)
 	a = new(big.Int)
 	b = new(big.Int)
 	one := big.NewInt(1)
 
-	// Проверка, что p ≡ 1 (mod 4)
 	mod4 := new(big.Int).Mod(p, big.NewInt(4))
 	if mod4.Cmp(one) != 0 {
 		file.WriteString("\np !≡ 1 (mod 4)")
@@ -297,10 +345,8 @@ func gen_n_bit(n int, fill string) *big.Int {
 func given_length(n int, i_num *big.Int) bool {
 	var prime_new *big.Int = gen_n_bit(n, "1")
 	if i_num.Cmp(prime_new) < 1 {
-		file.WriteString("\n" + "p = " + i_num.String())
 		return true
 	} else {
-		// file.WriteString("\n" + "Нет числа заданной длинны ")
 		return false
 	}
 
@@ -353,7 +399,6 @@ func millerRabinTest(n, d *big.Int, rng *rand.Rand) bool {
 	return false
 }
 
-// Основная функция для проверки числа на простоту
 func isPrime(n *big.Int, k int) bool {
 	if n.Cmp(big.NewInt(2)) == 0 || n.Cmp(big.NewInt(3)) == 0 {
 		return true
