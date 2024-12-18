@@ -66,12 +66,10 @@ func scalarMultiply(x, y, k, a, p *big.Int) (*big.Int, *big.Int, bool) {
 
 		if k.Bit(i) == 1 {
 			if isInfinity(rx, ry) {
-				// file.WriteString("\n" + "Точка уходит в бесконечность")
 				flag = true
 				rx, ry = x, y
 			} else {
 				rx, ry, _ = addPoints(rx, ry, x, y, a, p)
-				// file.WriteString("\n" + "Точка достигла " + rx.String() + ", " + ry.String())
 			}
 		}
 	}

@@ -15,6 +15,7 @@ f2.close()
 result_x = [int(item) for item in lline_coor_x[:-1]]
 result_y = [int(item) for item in lline_coor_y[:-1]]
 
+
 plt.figure(figsize=(8, 6))
 _, ax = plt.subplots()
 ax.scatter(result_x, result_y)

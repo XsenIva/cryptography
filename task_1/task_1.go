@@ -1,3 +1,6 @@
+//  GO111MODULE=off go run .   - для запуска
+//  python3 curve.py - для отрисовки кривой
+
 package main
 
 import (
@@ -57,16 +60,16 @@ func main() {
 				break
 			}
 		}
-		// надо сделать округление вверх
+
 		file.WriteString("\nprime p = " + list_prime_num[f].String())
 		list_p = append(list_p, list_prime_num[f])
-		fmt.Println(list_p)
 		i_num = list_prime_num[f]
 
 		a, b, _ = decomposeToSquares(i_num)
 		if a == nil || b == nil {
 			continue
 		}
+
 		res1, res2, res3, flag := test_2_conditions(a, b, one_big, i_num)
 		if flag {
 			n_big, r, order = res1, res2, res3
@@ -78,7 +81,6 @@ func main() {
 	}
 
 	file.WriteString("\n" + "Проверка условий N = 1 + T + p")
-	file.WriteString("\n" + "N, r, k = " + n_big.String() + ", " + r.String() + ", " + order.String())
 
 	if check_m(r, i_num, one_big, m) {
 		file.WriteString("\n" + "Результат: " + "проходит")
@@ -87,36 +89,50 @@ func main() {
 		return
 	}
 
+	var a_cof_xy []*big.Int
 	a_cof_list := gen_a_cof(n_big, order)
-
+	var rx, ry *big.Int
 	var x, y, a_cof *big.Int
 	for _, el := range a_cof_list {
 		x, y = find_points(el, i_num)
 		if x != nil && y != nil {
 			a_cof = el
-			break
+			a_cof_xy = append(a_cof_xy, el)
 		}
 	}
-	file.WriteString("\nКоэффициент A: " + a_cof.String())
-	file.WriteString("\n" + "Сгенерированы следующие точки \nx, y = " + x.String() + ", " + y.String())
-	rx, ry, _ := scalarMultiply(x, y, n_big, a_cof, i_num)
-	fmt.Printf("Результат проверки бесконечности: (%s, %s)\n", rx.String(), ry.String())
 
+	for _, a := range a_cof_xy {
+		x, y = find_points(a, i_num)
+		a_cof = a
+		file.WriteString("\nКоэффициент A: " + a.String())
+		fmt.Println("a_cof_list", a_cof_xy)
+		file.WriteString("\nКоэффициент A: " + a.String())
+		file.WriteString("\n" + "Сгенерированы следующие точки \nx, y = " + x.String() + ", " + y.String())
+
+		rxx, ryy, flag := scalarMultiply(x, y, n_big, a, i_num)
+		rx, ry = rxx, ryy
+		fmt.Printf("Результат проверки бесконечности: (%s, %s)\n", rx.String(), " ", ry.String())
+		if flag {
+			file.WriteString("\n Проверка бесконечности прошла\n")
+			break
+		} else {
+			file.WriteString("\n Проверка бесконечности НЕЕЕЕЕ прошла\n")
+			continue
+		}
+	}
+
+	file.WriteString("Результат проверки бесконечности: \n" + rx.String() + " " + ry.String())
 	file.WriteString("\n" + "N, r, k = " + n_big.String() + ", " + r.String() + ", " + order.String())
-
 	aboba := new(big.Int).Div(n_big, r)
 	rx, ry, _ = scalarMultiply(x, y, aboba, a_cof, i_num)
-
 	xy_string := "(" + rx.String() + ", " + ry.String() + ")"
 	file.WriteString("\nТочка Q = " + xy_string)
-
-	file.WriteString("\nКривая (P, A ,Q, r) = " + i_num.String() + ", " + a_cof.String() + ", " + xy_string + ", " + r.String())
 
 	var arr_points_x string
 	var arr_points_y string
 	arr_points_x = arr_points_x + rx.String() + ","
 	arr_points_y = arr_points_y + ry.String() + ","
-
+	str_m := make(map[string]int)
 	i := big.NewInt(2)
 	for {
 		if i.Cmp(new(big.Int).Add(r, big.NewInt(1))) == 1 {
@@ -126,22 +142,13 @@ func main() {
 		i = new(big.Int).Add(i, big.NewInt(1))
 		arr_points_x = arr_points_x + q_qx.String() + ","
 		arr_points_y = arr_points_y + q_qy.String() + ","
+		st_ := q_qx.String() + " " + q_qy.String() + " "
+		str_m[st_] = 0
 	}
-
+	file.WriteString("\nКривая (P, A ,Q, r) = " + i_num.String() + ", " + a_cof.String() + ", " + xy_string + ", " + strconv.Itoa(len(str_m)))
 	file_2.WriteString("\nЦиклическая группа " + "\n" + arr_points_x + "\n" + arr_points_y)
 	file.WriteString("\nЦиклическая группа " + "\n" + arr_points_x + "\n" + arr_points_y)
-}
-
-func checkPointOnCurve(x, y, a, p *big.Int) bool {
-	left := new(big.Int).Mul(y, y)
-	left.Mod(left, p)
-
-	right := new(big.Int).Mul(x, x)
-	right.Mul(right, x)
-	right.Add(right, new(big.Int).Mul(a, x))
-	right.Mod(right, p)
-
-	return left.Cmp(right) == 0
+	fmt.Println(len(str_m))
 }
 
 func parseBigIntArray(input string) ([]*big.Int, error) {
@@ -169,7 +176,6 @@ func gen_prim_num(n int, one_big *big.Int) string {
 	for_big := big.NewInt(4)
 	sum := new(big.Int)
 	var numP string
-	fmt.Println(i_num)
 	for {
 		if !given_length(n, i_num) {
 			break
@@ -190,8 +196,6 @@ func find_points(a_cof, p *big.Int) (*big.Int, *big.Int) {
 	for x.Cmp(p) != 0 {
 		for y.Cmp(p) != 0 {
 			if new(big.Int).Div(new(big.Int).Sub(new(big.Int).Mul(y, y), new(big.Int).Mul(new(big.Int).Mul(x, x), x)), x).Cmp(a_cof) == 0 {
-				fmt.Println(x)
-				fmt.Println(y)
 				return x, y
 			}
 			y.Add(y, big.NewInt(1))
@@ -421,4 +425,16 @@ func isPrime(n *big.Int, k int) bool {
 		}
 	}
 	return true
+}
+
+func checkPointOnCurve(x, y, a, p *big.Int) bool {
+	left := new(big.Int).Mul(y, y)
+	left.Mod(left, p)
+
+	right := new(big.Int).Mul(x, x)
+	right.Mul(right, x)
+	right.Add(right, new(big.Int).Mul(a, x))
+	right.Mod(right, p)
+
+	return left.Cmp(right) == 0
 }
